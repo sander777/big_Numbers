@@ -1,5 +1,7 @@
 use std::{cmp, collections::LinkedList, fmt::Display, ops};
 
+use cmp::Ordering;
+
 #[derive(Clone)]
 pub struct BigNumber {
     sign: i8,
@@ -24,6 +26,47 @@ impl<'a> BigNumber {
     pub fn negative(&self) -> BigNumber {
         BigNumber {
             sign: self.sign * -1,
+            number: self.number.clone(),
+        }
+    }
+    pub fn pow(&self, p: &BigNumber) -> BigNumber {
+        let mut p = p.clone();
+        let mut base = self.clone();
+        let mut res = BigNumber::from(1);
+        let zero = BigNumber::from(0);
+        let two = BigNumber::from(2);
+        loop {
+            if p.number.back().unwrap() % 2 != 0 {
+                res *= &base;
+            }
+            p /= &two;
+            if p == zero {
+                break;
+            }
+            let temp = &base * &base;
+            base = temp;
+        }
+        res
+    }
+    pub fn powi(&self, mut p: i32) -> BigNumber {
+        let mut base = self.clone();
+        let mut res = BigNumber::from(1);
+        loop {
+            if p & 1 == 1 {
+                res *= &base;
+            }
+            p >>= 1;
+            if p == 0 {
+                break;
+            }
+            let temp = &base * &base;
+            base = temp;
+        }
+        res
+    }
+    pub fn abs(&self) -> BigNumber {
+        BigNumber {
+            sign: 1,
             number: self.number.clone(),
         }
     }
@@ -53,17 +96,35 @@ impl<'a> BigNumber {
         (l, r)
     }
     fn normalize(mut self) -> BigNumber {
-        while self.number.len() > 1 && *self.number.front().unwrap() == 0 {
+        while self.number.len() > 0 && *self.number.front().unwrap() == 0 {
             self.number.pop_front();
         }
         if self.number.len() == 0 {
-            self.number.push_front(0);
-        }
-        if self.number.len() == 1 && *self.number.front().unwrap() == 0 {
             self.sign = 1;
         }
 
         self
+    }
+    fn cmp_abs(&self, other: &BigNumber) -> Option<Ordering> {
+        if self.number.len() != other.number.len() {
+            return Some(self.number.len().cmp(&other.number.len()));
+        }
+        let mut l_iter = self.number.iter();
+        let mut r_iter = other.number.iter();
+        for _ in 0..self.number.len() {
+            let lin = match l_iter.next() {
+                Some(n) => *n,
+                None => 0,
+            };
+            let rin = match r_iter.next() {
+                Some(n) => *n,
+                None => 0,
+            };
+            if lin != rin {
+                return Some(lin.cmp(&rin));
+            }
+        }
+        Some(cmp::Ordering::Equal)
     }
 }
 
@@ -247,6 +308,42 @@ impl ops::Sub<&BigNumber> for &BigNumber {
 gen_ops_impls!(Sub, sub, -);
 gen_ops_assign_impls!(SubAssign, sub_assign, -);
 
+impl ops::Div<&BigNumber> for &BigNumber {
+    type Output = BigNumber;
+    fn div(self, rhs: &BigNumber) -> Self::Output {
+        if *rhs == BigNumber::from(0) {
+            panic!("dividing by 0")
+        }
+        let sign = self.sign * rhs.sign;
+        match self.cmp_abs(rhs).unwrap() {
+            Ordering::Less => BigNumber::from(0).normalize(),
+            Ordering::Equal => {
+                let mut res = BigNumber::from(1);
+                res.sign = sign;
+                res
+            }
+            Ordering::Greater => {
+                let rhs = rhs.abs();
+                let mut self_num = self.number.clone();
+                let mut res = BigNumber::from(0);
+                let mut temp_ = BigNumber::from(0);
+                while self_num.len() > 0 {
+                    temp_.number.push_back(self_num.pop_front().unwrap());
+                    temp_ = temp_.normalize();
+                    let (r, rem) = divider(&temp_, &rhs);
+                    res.number.push_back(r);
+                    temp_ = rem;
+                }
+                res.sign = sign;
+                res.normalize()
+            }
+        }
+    }
+}
+
+gen_ops_impls!(Div, div, /);
+gen_ops_assign_impls!(DivAssign, div_assign, /);
+
 impl cmp::PartialEq for BigNumber {
     fn eq(&self, other: &BigNumber) -> bool {
         if self.sign != other.sign {
@@ -280,36 +377,22 @@ impl cmp::PartialOrd for BigNumber {
         if self.sign != other.sign {
             return Some(self.sign.cmp(&other.sign));
         }
-        if self.number.len() != other.number.len() {
-            return Some(self.number.len().cmp(&other.number.len()));
-        }
-        let mut l_iter = self.number.iter();
-        let mut r_iter = other.number.iter();
-        for _ in 0..self.number.len() {
-            let lin = match l_iter.next() {
-                Some(n) => *n,
-                None => 0,
-            };
-            let rin = match r_iter.next() {
-                Some(n) => *n,
-                None => 0,
-            };
-            if lin != rin {
-                return Some(lin.cmp(&rin));
-            }
-        }
-        Some(cmp::Ordering::Equal)
+        self.cmp_abs(other)
     }
 }
 
 impl Display for BigNumber {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut write_string = String::new();
-        if self.sign == -1 {
-            write_string.push('-');
-        }
-        for c in &self.number {
-            write_string.push((*c as u8 + 48) as char);
+        if self.number.len() == 0 {
+            write_string.push('0');
+        } else {
+            if self.sign == -1 {
+                write_string.push('-');
+            }
+            for c in &self.number {
+                write_string.push((*c as u8 + 48) as char);
+            }
         }
         write!(f, "{}", write_string)
     }
@@ -339,14 +422,24 @@ fn how_many_digits(n: i32) -> usize {
 
 fn adder(r: i8, l: i8, p: i8) -> (i8, i8) {
     let res = r + l + p;
-
-    (
-        if res < 0 { 10 + res } else { res % 10 },
-        if res < 0 { -1 } else { res / 10 },
-    )
+    if res < 0 {
+        (10 + res, -1)
+    } else {
+        (res % 10, res / 10)
+    }
 }
 
 fn multiplier(r: i8, l: i8, p: i8) -> (i8, i8) {
     let res = r * l + p;
     (res % 10, res / 10)
+}
+
+fn divider(l: &BigNumber, r: &BigNumber) -> (i8, BigNumber) {
+    let mut l = l.clone();
+    let mut i = 0;
+    while l.cmp_abs(r).unwrap() != Ordering::Less {
+        l -= r;
+        i += 1;
+    }
+    (i, l)
 }
