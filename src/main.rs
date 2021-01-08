@@ -5,27 +5,27 @@ use std::time::{Duration, Instant};
 use big_number::BigNumber;
 
 fn main() {
-    println!(
-        "{:?}",
-        mesure(|| {
-            let a = BigNumber::from(
-                "23984871283974891273453245234523453123423409812083759021834072138421093848217395742037404",
-            );
-            println!("{}^100 = {}", a, a.pow(&BigNumber::from(100)));
-        })
+    let mut file = File::create("answer.txt").unwrap();
+    let a = BigNumber::from(
+        "23984871283974891273453245234523453123423409812083759021834072138421093848217395742037404",
     );
+    let p = BigNumber::from(100);
+    let (res, time) = mesure(|| a.pow(&p));
+    file.write(format!("{}^{} = {}\n\ntime = {:?}", a, p, res, time).as_bytes()).unwrap();
+    println!("{}", a * p % BigNumber::from("1341234123512"))
 }
 
-fn mesure<F>(work: F) -> Duration
+fn mesure<F, Out>(work: F) -> (Out, Duration)
 where
-    F: Fn() -> (),
+    F: Fn() -> Out,
 {
     let start = Instant::now();
-    work();
-    Instant::now() - start
+    let res = work();
+    (res, Instant::now() - start)
 }
 
 extern crate rand;
+use fs::File;
 use rand::prelude::*;
 use std::{fs, io::prelude::*, thread};
 

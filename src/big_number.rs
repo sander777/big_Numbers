@@ -1,6 +1,10 @@
-use std::{cmp, collections::LinkedList, fmt::Display, ops};
-
-use cmp::Ordering;
+use std::{
+    cmp,
+    cmp::Ordering,
+    collections::{linked_list::Iter, LinkedList},
+    fmt::Display,
+    ops,
+};
 
 #[derive(Clone)]
 pub struct BigNumber {
@@ -206,55 +210,20 @@ impl ops::Add<&BigNumber> for &BigNumber {
     type Output = BigNumber;
     fn add(self, rhs: &BigNumber) -> Self::Output {
         let mut num_list = LinkedList::new();
-        let max_n = self.number.len().max(rhs.number.len());
-        let mut p = 0;
         let mut sign = 1;
         if self.sign == rhs.sign {
-            let mut l_iter = self.number.iter().rev();
-            let mut r_iter = rhs.number.iter().rev();
-            for _ in 0..max_n {
-                let l_in = match l_iter.next() {
-                    Some(n) => *n,
-                    None => 0,
-                };
-                let r_in = match r_iter.next() {
-                    Some(n) => *n,
-                    None => 0,
-                };
-                let ln = l_in;
-                let rn = r_in;
-                let (n, p_) = adder(rn, ln, p);
-                p = p_;
-                num_list.push_front(n.abs());
-            }
-            if p != 0 {
-                num_list.push_front(p.abs());
-            }
+            let l_iter = self.number.iter();
+            let r_iter = rhs.number.iter();
+            let list = iter_adder(l_iter, r_iter, 1);
+            num_list = list;
             sign = self.sign;
         } else {
             let (small, big) = BigNumber::smaller_bigger_abs(self, rhs);
             sign = big.sign;
-            let mut small_iter = small.number.iter().rev();
-            let mut big_iter = big.number.iter().rev();
-            for _ in 0..max_n {
-                let s_in = match small_iter.next() {
-                    Some(n) => *n,
-                    None => 0,
-                };
-                let b_in = match big_iter.next() {
-                    Some(n) => *n,
-                    None => 0,
-                };
-                let sn = -1 * s_in;
-                let bn = b_in;
-                let (n, p_) = adder(bn, sn, p);
-                p = p_;
-                num_list.push_front(n.abs());
-            }
-            if p != 0 {
-                num_list.push_front(p.abs());
-                sign = sign_of(p as i32);
-            }
+            let small_iter = small.number.iter();
+            let big_iter = big.number.iter();
+            let list = iter_adder(big_iter, small_iter, -1);
+            num_list = list;
         }
         BigNumber {
             sign,
@@ -344,6 +313,16 @@ impl ops::Div<&BigNumber> for &BigNumber {
 gen_ops_impls!(Div, div, /);
 gen_ops_assign_impls!(DivAssign, div_assign, /);
 
+impl ops::Rem<&BigNumber> for &BigNumber {
+    type Output = BigNumber;
+    fn rem(self, rhs: &BigNumber) -> Self::Output {
+        self - rhs * (self / rhs)
+    }
+}
+
+gen_ops_impls!(Rem, rem, %);
+gen_ops_assign_impls!(RemAssign, rem_assign, %);
+
 impl cmp::PartialEq for BigNumber {
     fn eq(&self, other: &BigNumber) -> bool {
         if self.sign != other.sign {
@@ -427,6 +406,34 @@ fn adder(r: i8, l: i8, p: i8) -> (i8, i8) {
     } else {
         (res % 10, res / 10)
     }
+}
+
+fn iter_adder(l_iter: Iter<i8>, r_iter: Iter<i8>, s: i8) -> LinkedList<i8> {
+    let max_n = l_iter.len().max(r_iter.len());
+    let mut p = 0;
+    let mut num_list = LinkedList::new();
+    let mut l_iter = l_iter.rev();
+    let mut r_iter = r_iter.rev();
+    for _ in 0..max_n {
+        let l_in = match l_iter.next() {
+            Some(n) => *n,
+            None => 0,
+        };
+        let r_in = match r_iter.next() {
+            Some(n) => *n,
+            None => 0,
+        };
+        let ln = l_in;
+        let rn = r_in * s;
+        let (n, p_) = adder(rn, ln, p);
+        p = p_;
+        num_list.push_front(n.abs());
+    }
+
+    if p != 0 {
+        num_list.push_front(p.abs());
+    }
+    num_list
 }
 
 fn multiplier(r: i8, l: i8, p: i8) -> (i8, i8) {
